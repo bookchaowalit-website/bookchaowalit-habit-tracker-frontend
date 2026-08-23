@@ -1,214 +1,34 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-
-function Shell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-black dark:text-zinc-100">
-      <div className="mx-auto max-w-6xl px-4 py-10">
-        <header className="mb-8">
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Local mini-app · state in this browser
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{title}</h1>
-          <p className="mt-2 max-w-2xl text-sm text-zinc-600 dark:text-zinc-400">{subtitle}</p>
-        </header>
-        {children}
-        <footer className="mt-10 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800">
-          Data is stored in localStorage on this origin only. Portfolio demo — not a multi-user product.
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-function Button({
-  children,
-  onClick,
-  variant = "primary",
-  disabled,
-  type = "button",
-  className = "",
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
-  disabled?: boolean;
-  type?: "button" | "submit";
-  className?: string;
-}) {
-  const base =
-    "inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium transition disabled:opacity-50 " +
-    className;
-  const styles =
-    variant === "primary"
-      ? "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900"
-      : variant === "secondary"
-        ? "bg-white text-zinc-900 ring-1 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-700"
-        : variant === "danger"
-          ? "bg-red-600 text-white hover:bg-red-500"
-          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900";
-  return (
-    <button type={type} disabled={disabled} onClick={onClick} className={`${base} ${styles}`}>
-      {children}
-    </button>
-  );
-}
-
-const inputClass =
-  "w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950";
-
-function useLocalStorage<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(initial);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw != null) setValue(JSON.parse(raw) as T);
-    } catch {
-      /* ignore */
-    }
-    setReady(true);
-  }, [key]);
-  useEffect(() => {
-    if (!ready) return;
-    localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value, ready]);
-  return [value, setValue, ready] as const;
-}
-
-function uid() {
-  return crypto.randomUUID();
-}
+import { useEffect, useMemo, useState } from "react";
 
 type Habit = { id: string; name: string; checks: Record<string, boolean> };
-
-function dateKey(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function lastNDays(n: number) {
-  const out: string[] = [];
-  const now = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    out.push(dateKey(d));
-  }
-  return out;
-}
-
-function streak(checks: Record<string, boolean>) {
-  let s = 0;
-  const now = new Date();
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    if (checks[dateKey(d)]) s++;
-    else break;
-  }
-  return s;
-}
+const seedHabits: Habit[] = [{ id: "move", name: "Move for 20 min", checks: {} }, { id: "read", name: "Read before bed", checks: {} }, { id: "focus", name: "One deep-work block", checks: {} }];
+function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
+function daysBack(count: number) { const today = new Date(); return Array.from({ length: count }, (_, index) => { const date = new Date(today); date.setDate(today.getDate() - count + index + 1); return dateKey(date); }); }
+function currentStreak(checks: Record<string, boolean>) { let total = 0; const today = new Date(); for (let i = 0; i < 365; i += 1) { const date = new Date(today); date.setDate(today.getDate() - i); if (!checks[dateKey(date)]) break; total += 1; } return total; }
 
 export default function Home() {
-  const days = useMemo(() => lastNDays(14), []);
-  const [habits, setHabits] = useLocalStorage<Habit[]>("habit-tracker-v1", [
-    { id: "1", name: "Exercise", checks: {} },
-    { id: "2", name: "Read 20 min", checks: {} },
-    { id: "3", name: "No doomscroll", checks: {} },
-  ]);
+  const days = useMemo(() => daysBack(14), []);
+  const [habits, setHabits] = useState<Habit[]>(seedHabits);
   const [name, setName] = useState("");
+  const [ready, setReady] = useState(false);
+  useEffect(() => { try { const saved = localStorage.getItem("habit-tracker-v2"); if (saved) setHabits(JSON.parse(saved) as Habit[]); } catch { /* preserve the starter lanes */ } setReady(true); }, []);
+  useEffect(() => { if (ready) localStorage.setItem("habit-tracker-v2", JSON.stringify(habits)); }, [habits, ready]);
+  const completedToday = habits.filter((habit) => habit.checks[days[days.length - 1]]).length;
+  const totalSignals = habits.reduce((total, habit) => total + days.filter((day) => habit.checks[day]).length, 0);
+  function addHabit() { if (!name.trim()) return; setHabits((current) => [...current, { id: crypto.randomUUID(), name: name.trim(), checks: {} }]); setName(""); }
+  function toggle(id: string, day: string) { setHabits((current) => current.map((habit) => habit.id === id ? { ...habit, checks: { ...habit.checks, [day]: !habit.checks[day] } } : habit)); }
 
-  const toggle = (id: string, day: string) => {
-    setHabits((prev) =>
-      prev.map((h) =>
-        h.id === id ? { ...h, checks: { ...h.checks, [day]: !h.checks[day] } } : h
-      )
-    );
-  };
-
-  return (
-    <Shell title="Habit Tracker" subtitle="Mark daily habits for the last two weeks. Streaks update as you check today.">
-      <div className="mb-4 flex gap-2">
-        <input
-          className={inputClass}
-          placeholder="New habit"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && name.trim()) {
-              setHabits((prev) => [...prev, { id: uid(), name: name.trim(), checks: {} }]);
-              setName("");
-            }
-          }}
-        />
-        <Button
-          onClick={() => {
-            if (!name.trim()) return;
-            setHabits((prev) => [...prev, { id: uid(), name: name.trim(), checks: {} }]);
-            setName("");
-          }}
-        >
-          Add habit
-        </Button>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-zinc-200 dark:border-zinc-800">
-              <th className="px-3 py-2 text-left font-medium">Habit</th>
-              {days.map((d) => (
-                <th key={d} className="px-1 py-2 text-center text-xs font-normal text-zinc-500">
-                  {d.slice(5)}
-                </th>
-              ))}
-              <th className="px-3 py-2 text-right font-medium">Streak</th>
-              <th className="px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {habits.map((h) => (
-              <tr key={h.id} className="border-b border-zinc-100 dark:border-zinc-900">
-                <td className="px-3 py-2 font-medium">{h.name}</td>
-                {days.map((d) => (
-                  <td key={d} className="px-1 py-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => toggle(h.id, d)}
-                      className={`h-7 w-7 rounded-md border text-xs ${
-                        h.checks[d]
-                          ? "border-emerald-600 bg-emerald-500 text-white"
-                          : "border-zinc-200 dark:border-zinc-700"
-                      }`}
-                      aria-label={`Toggle ${h.name} on ${d}`}
-                    >
-                      {h.checks[d] ? "✓" : ""}
-                    </button>
-                  </td>
-                ))}
-                <td className="px-3 py-2 text-right tabular-nums">{streak(h.checks)}</td>
-                <td className="px-2 py-2">
-                  <Button variant="ghost" onClick={() => setHabits((prev) => prev.filter((x) => x.id !== h.id))}>
-                    ×
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Shell>
-  );
+  return <main className="patchbay-shell">
+    <header className="patchbay-header"><div className="machine-mark" aria-hidden="true"><span /><span /><span /></div><div><p className="eyebrow">SOLO OPERATIONS / DAILY SIGNALS</p><h1>Keep the circuit alive.</h1><p className="lede">A 14-day patchbay for the small actions that keep a good day connected.</p></div><div className="status-readout"><span>LOCAL MEMORY</span><strong>ON</strong><span>no account · no sync</span></div></header>
+    <div className="amber-line" />
+    <section className="readouts" aria-label="Habit tracker summary"><div><span>LIVE LANES</span><strong>{String(habits.length).padStart(2, "0")}</strong></div><div><span>TODAY</span><strong>{completedToday}/{habits.length || 0}</strong></div><div><span>14-DAY SIGNALS</span><strong>{String(totalSignals).padStart(2, "0")}</strong></div><p>Tap a cell to close the circuit for that day.</p></section>
+    <section className="console" aria-labelledby="lanes-heading"><div className="console-top"><div><span className="section-label">PATCH SCHEDULE / 14 DAYS</span><h2 id="lanes-heading">Your lanes</h2></div><div className="legend"><span className="legend-wire active" /> completed <span className="legend-wire" /> open</div></div>
+      <div className="table-wrap"><table><thead><tr><th scope="col">Lane</th>{days.map((day, index) => <th scope="col" key={day}><span>{index === days.length - 1 ? "NOW" : day.slice(5)}</span></th>)}<th scope="col">Streak</th><th scope="col"><span className="sr-only">Remove</span></th></tr></thead><tbody>{habits.map((habit, row) => <tr key={habit.id}><th scope="row"><span className="lane-number">{String(row + 1).padStart(2, "0")}</span>{habit.name}</th>{days.map((day) => <td key={day}><button type="button" aria-label={`${habit.checks[day] ? "Unmark" : "Mark"} ${habit.name} on ${day}`} aria-pressed={Boolean(habit.checks[day])} className={`patch ${habit.checks[day] ? "patched" : ""}`} onClick={() => toggle(habit.id, day)}><span /></button></td>)}<td className="streak">{currentStreak(habit.checks)}<small>d</small></td><td><button className="remove" type="button" onClick={() => setHabits((current) => current.filter((item) => item.id !== habit.id))} aria-label={`Remove ${habit.name}`}>×</button></td></tr>)}</tbody></table></div>
+      {habits.length === 0 && <p className="empty">No lanes are patched. Add one below to restore the schedule.</p>}
+      <div className="add-lane"><label htmlFor="new-habit">Open a new lane</label><input id="new-habit" value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addHabit(); }} placeholder="e.g. Drink water" /><button type="button" onClick={addHabit}>Patch lane <span>+</span></button></div>
+    </section>
+    <footer className="patchbay-footer"><span>HABIT TRACKER / BUILD 02</span><span>Data stays on this device.</span></footer>
+  </main>;
 }
